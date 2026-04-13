@@ -157,7 +157,7 @@ python3 scripts/query_refund.py \
 ## 相关链接
 
 - [汇聚支付官网](https://www.joinpay.com)
-- [汇聚支付商户后台](https://merchant.joinpay.com)
+- [汇聚支付商户后台](https://b.joinpay.com)
 
 ## License
 
