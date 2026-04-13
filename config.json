@@ -1,1 +1,21 @@
-{"default_merchant_no": "888100500008456", "merchant_key": "f1075a476dff466cb67d348d4669bbd5", "base_url": "https://trade.joinpay.cc", "default_notify_url": "http://10.30.50.49:8090/notify_url.jsp", "default_trade_merchant_no": "", "rsa_private_key": "", "rsa_public_key": "", "sign_type": "MD5", "_comment": "配置说明: merchant_key用于MD5签名, rsa_private_key/rsa_public_key用于RSA签名(二选一), sign_type指定签名方式(MD5/RSA)"}
+{
+  "default_merchant_no": "888100500008456",
+  "merchant_key": "f1075a476dff466cb67d348d4669bbd5",
+  "base_url": "https://trade.joinpay.cc",
+  "default_notify_url": "http://10.30.50.49:8090/notify_url.jsp",
+  "default_trade_merchant_no": "",
+  "rsa_private_key": "",
+  "rsa_public_key": "",
+  "sign_type": "MD5",
+
+  "_comment_fields": {
+    "default_merchant_no": "汇聚支付分配的商户编号",
+    "merchant_key": "MD5签名密钥(32位)，在商户后台申请获取",
+    "base_url": "接口地址，测试环境 https://trade.joinpay.cc，生产环境 https://trade.joinpay.com",
+    "default_notify_url": "支付结果异步回调通知地址",
+    "default_trade_merchant_no": "交易商户号(服务商模式下填写特约商户号，普通商户留空)",
+    "rsa_private_key": "RSA商户私钥(PKCS8 PEM格式)，用于请求签名。仅在sign_type为RSA时填写。示例: -----BEGIN PRIVATE KEY-----\\nMIIEvgIBADANBg...\\n-----END PRIVATE KEY-----",
+    "rsa_public_key": "RSA平台公钥(PKCS8 PEM格式)，用于验证回调签名。仅在sign_type为RSA时填写。示例: -----BEGIN PUBLIC KEY-----\\nMIIBIjANBgkqh...\\n-----END PUBLIC KEY-----",
+    "sign_type": "签名方式: MD5 或 RSA，二选一"
+  }
+}
