@@ -2,7 +2,7 @@
 """
 汇聚支付 RSA 签名工具
 
-使用 cryptography 库实现 RSA SHA256WithRSA 签名。
+使用 cryptography 库实现 RSA MD5withRSA 签名（与 RSAUtils.java:76 一致）。
 如未安装: pip install cryptography
 """
 
@@ -41,11 +41,12 @@ def sign(params: dict, private_key_pem: str) -> str:
         password=None,
     )
 
-    # 签名 (SHA256WithRSA / PKCS1v15)
+    # 签名 (MD5withRSA / PKCS1v15，与 RSAUtils.java:76 SIGNATURE_ALGORITHM 一致)
+    from cryptography.hazmat.primitives.asymmetric import utils as asym_utils
     signature = private_key.sign(
         sign_str.encode("utf-8"),
         padding.PKCS1v15(),
-        hashes.SHA256(),
+        asym_utils.Prehashed(hashes.MD5()),
     )
 
     return base64.b64encode(signature).decode("utf-8")
@@ -82,13 +83,14 @@ def verify(params: dict, public_key_pem: str, hmac_value: str) -> bool:
     except Exception:
         public_key = serialization.load_pem_public_key(public_key_pem.encode("utf-8"))
 
-    # 验签
+    # 验签 (MD5withRSA)
+    from cryptography.hazmat.primitives.asymmetric import utils as asym_utils
     try:
         public_key.verify(
             base64.b64decode(hmac_value),
             sign_str.encode("utf-8"),
             padding.PKCS1v15(),
-            hashes.SHA256(),
+            asym_utils.Prehashed(hashes.MD5()),
         )
         return True
     except Exception:
@@ -96,11 +98,12 @@ def verify(params: dict, public_key_pem: str, hmac_value: str) -> bool:
 
 
 def _build_sign_string(params: dict) -> str:
-    """构建待签名字符串（与MD5方式一致）"""
-    filtered = {
-        k: str(v).strip()
-        for k, v in params.items()
-        if k.lower() != "hmac" and v is not None and str(v).strip()
-    }
+    """构建待签名字符串（与 SignBiz.java:80-99 一致，空值不参与签名）"""
+    filtered = {}
+    for k, v in params.items():
+        if k.lower() != "hmac":
+            val = str(v).strip() if v is not None else ""
+            if val:
+                filtered[k] = val
     sorted_keys = sorted(filtered.keys())
     return "".join(filtered[k] for k in sorted_keys)

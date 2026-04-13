@@ -22,7 +22,7 @@ def sign(params: dict, merchant_key: str) -> str:
     Returns:
         签名值（大写）
     """
-    # 排除hmac，按key排序
+    # 排除hmac，过滤空值（与 SignBiz.java:80-99 一致）
     filtered = {}
     for k, v in params.items():
         if k.lower() == "hmac":

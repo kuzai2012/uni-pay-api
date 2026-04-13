@@ -2,9 +2,9 @@ package joinpaysdk
 
 import (
 	"crypto"
+	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
@@ -12,12 +12,12 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-)
+")
 
 // JoinPayRsaSignature 汇聚支付 RSA 签名工具
 type JoinPayRsaSignature struct{}
 
-// Sign 使用RSA私钥生成签名 (SHA256WithRSA)
+// Sign 使用RSA私钥生成签名 (MD5withRSA，与 RSAUtils.java:76 一致)
 func (r *JoinPayRsaSignature) Sign(params map[string]string, privateKeyPEM string) (string, error) {
 	signStr := r.buildSignString(params)
 
@@ -26,8 +26,8 @@ func (r *JoinPayRsaSignature) Sign(params map[string]string, privateKeyPEM strin
 		return "", fmt.Errorf("解析私钥失败: %v", err)
 	}
 
-	hash := sha256.Sum256([]byte(signStr))
-	signature, err := rsa.SignPKCS1v15(rand.Reader, privKey, crypto.SHA256, hash[:])
+	hash := md5.Sum([]byte(signStr))
+	signature, err := rsa.SignPKCS1v15(rand.Reader, privKey, crypto.MD5, hash[:])
 	if err != nil {
 		return "", err
 	}
@@ -53,8 +53,8 @@ func (r *JoinPayRsaSignature) Verify(params map[string]string, publicKeyPEM stri
 		return false, err
 	}
 
-	hash := sha256.Sum256([]byte(signStr))
-	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hash[:], sigBytes)
+	hash := md5.Sum([]byte(signStr))
+	err = rsa.VerifyPKCS1v15(pubKey, crypto.MD5, hash[:], sigBytes)
 	if err != nil {
 		return false, nil // 验签失败不报错，返回false
 	}
@@ -63,6 +63,7 @@ func (r *JoinPayRsaSignature) Verify(params map[string]string, publicKeyPEM stri
 }
 
 func (r *JoinPayRsaSignature) buildSignString(params map[string]string) string {
+	// 与 SignBiz.java:80-99 一致，空值不参与签名
 	var keys []string
 	for k := range params {
 		if strings.ToLower(k) == "hmac" {

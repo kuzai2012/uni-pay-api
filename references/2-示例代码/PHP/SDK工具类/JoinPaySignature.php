@@ -11,11 +11,7 @@
 class JoinPaySignature
 {
     /**
-     * 生成MD5签名
-     *
-     * @param array $params 请求参数（不含hmac）
-     * @param string $merchantKey 商户密钥
-     * @return string 签名值（大写）
+     * 生成MD5签名（与 SignBiz.java:80-99 一致，空值不参与签名）
      */
     public static function sign(array $params, string $merchantKey): string
     {

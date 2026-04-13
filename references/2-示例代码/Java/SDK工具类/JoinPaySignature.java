@@ -16,11 +16,8 @@ import java.util.*;
 public class JoinPaySignature {
 
     /**
-     * 生成MD5签名
-     *
-     * @param params       请求参数（不包含hmac）
-     * @param merchantKey  商户密钥
-     * @return 签名值（大写）
+     * 生成MD5签名（与 SignBiz.java:80-99 一致）
+     * 注意：value为空的参数不参与签名（SignBiz接收的HTTP请求中本身不包含空值字段）
      */
     public static String sign(Map<String, Object> params, String merchantKey) {
         // 1. 排除hmac，按key排序
@@ -33,7 +30,7 @@ public class JoinPaySignature {
         }
         Collections.sort(keys);
 
-        // 2. 拼接所有value
+        // 2. 拼接所有非空value
         StringBuilder content = new StringBuilder();
         for (String key : keys) {
             Object value = params.get(key);

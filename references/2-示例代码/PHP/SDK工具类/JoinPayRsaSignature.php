@@ -2,7 +2,7 @@
 /**
  * 汇聚支付 RSA 签名工具
  *
- * 使用 OpenSSL 扩展实现 RSA SHA256WithRSA 签名。
+ * 使用 OpenSSL 扩展实现 RSA MD5withRSA 签名（与 RSAUtils.java:76 一致）。
  */
 class JoinPayRsaSignature
 {
@@ -21,8 +21,8 @@ class JoinPayRsaSignature
         // 加载私钥
         $pem = self::loadPrivateKey($privateKey);
 
-        // 签名 SHA256WithRSA
-        $result = openssl_sign($signStr, $signature, $pem, OPENSSL_ALGO_SHA256);
+        // 签名 MD5withRSA（与 RSAUtils.java:76 SIGNATURE_ALGORITHM 一致）
+        $result = openssl_sign($signStr, $signature, $pem, OPENSSL_ALGO_MD5);
         if (!$result) {
             throw new \RuntimeException('RSA签名失败');
         }
@@ -53,12 +53,12 @@ class JoinPayRsaSignature
             return false;
         }
 
-        $result = openssl_verify($signStr, $sigData, $pem, OPENSSL_ALGO_SHA256);
+        $result = openssl_verify($signStr, $sigData, $pem, OPENSSL_ALGO_MD5);
         return $result === 1;
     }
 
     /**
-     * 构建待签名字符串（与MD5一致）
+     * 构建待签名字符串（与 SignBiz.java:80-99 一致，空值不参与签名）
      */
     public static function buildSignString(array $params): string
     {

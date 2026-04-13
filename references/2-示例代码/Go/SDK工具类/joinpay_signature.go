@@ -24,7 +24,7 @@ import (
 // 4. MD5(拼接值 + merchantKey).toUpperCase()
 type JoinPaySignature struct{}
 
-// Sign 生成MD5签名
+// Sign 生成MD5签名（与 SignBiz.java:80-99 一致，空值不参与签名）
 func (s *JoinPaySignature) Sign(params map[string]string, merchantKey string) string {
 	var keys []string
 	for k := range params {
