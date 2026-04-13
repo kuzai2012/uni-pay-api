@@ -1,6 +1,6 @@
 {
-  "default_merchant_no": "888100500008456",
-  "merchant_key": "f1075a476dff466cb67d348d4669bbd5",
+  "default_merchant_no": "888XXXXXXXXXXX",
+  "merchant_key": "f1075a476XXXXXXXXX",
   "base_url": "https://trade.joinpay.cc",
   "default_notify_url": "http://10.30.50.49:8090/notify_url.jsp",
   "default_trade_merchant_no": "",
