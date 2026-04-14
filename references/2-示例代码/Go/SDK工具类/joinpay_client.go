@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -88,6 +89,11 @@ func (r APIResponse) Int(key string) int {
 
 // UnifiedPay 统一支付下单
 func (c *JoinPayClient) UnifiedPay(req UnifiedPayRequest) (APIResponse, error) {
+	// 校验回调地址（汇聚服务端会拒绝 localhost/127.0.0.1 等内网地址）
+	if err := validateNotifyUrl(req.NotifyURL); err != nil {
+		return APIResponse{"ra_Code": "-1", "rb_CodeMsg": err.Error()}, err
+	}
+
 	params := map[string]string{
 		"p0_Version":        c.Version,
 		"p1_MerchantNo":     c.MerchantNo,
@@ -95,13 +101,13 @@ func (c *JoinPayClient) UnifiedPay(req UnifiedPayRequest) (APIResponse, error) {
 		"p3_Amount":         req.Amount,
 		"p4_Cur":            defaultIfEmpty(req.Cur, "1"),
 		"p5_ProductName":    req.ProductName,
-		"p9_NotifyURL":      req.NotifyURL,
+		"p9_NotifyUrl":      req.NotifyURL,
 		"q1_FrpCode":        req.FrpCode,
 		"qa_TradeMerchantNo": defaultIfEmpty(req.TradeMerchantNo, ""),
 	}
 	setIfNotEmpty(params, "p6_ProductDesc", req.ProductDesc)
 	setIfNotEmpty(params, "p7_Mp", req.Mp)
-	setIfNotEmpty(params, "p8_ReturnURL", req.ReturnURL)
+	setIfNotEmpty(params, "p8_ReturnUrl", req.ReturnURL)
 	setIfNotEmpty(params, "q3_SubMerchantNo", req.SubMerchantNo)
 	setIfNotEmpty(params, "q4_IsShowPic", req.IsShowPic)
 	setIfNotEmpty(params, "q5_OpenId", req.OpenId)
@@ -137,7 +143,7 @@ func (c *JoinPayClient) Refund(orderNo, refundOrderNo, refundAmount, reason, not
 		"p4_RefundAmount":   refundAmount,
 		"p5_RefundReason":   reason,
 	}
-	setIfNotEmpty(params, "p6_NotifyURL", notifyURL)
+	setIfNotEmpty(params, "p6_NotifyUrl", notifyURL)
 	return c.post("/tradeRt/refund", params)
 }
 
@@ -234,6 +240,39 @@ func (c *JoinPayClient) post(apiPath string, params map[string]string) (APIRespo
 }
 
 // ==================== 工具函数 ====================
+
+// validateNotifyUrl 校验回调地址合法性
+//
+// 汇聚支付服务端会校验 p9_NotifyUrl，拒绝以下地址：
+//   - localhost / 127.0.0.1（汇聚服务器无法访问你的本机）
+//   - 10.x / 172.16-31.x / 192.168.x（内网地址）
+func validateNotifyUrl(url string) error {
+	if url == "" {
+		return nil // 允许为空
+	}
+	lower := strings.ToLower(strings.TrimSpace(url))
+
+	if strings.HasPrefix(lower, "http://localhost") || strings.HasPrefix(lower, "https://localhost") {
+		return fmt.Errorf("回调地址不能使用 localhost！"+
+			"本地开发请使用内网穿透工具(ngrok/cpolar/frp)，或使用公网地址。错误地址: %s", url)
+	}
+
+	// 127.0.0.x 回环地址
+	if regexp.MustCompile(`.*://127\.0?\.?0?\.?[0-9]?.*`).MatchString(lower) || strings.Contains(lower, "127.1.") {
+		return fmt.Errorf("回调地址不能使用 127.0.0.x 回环地址！错误地址: %s", url)
+	}
+
+	// 内网地址段
+	if regexp.MustCompile(`^https?://(?:10\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.)`).MatchString(lower) {
+		return fmt.Errorf("回调地址不能使用内网IP！汇聚服务端无法从外网访问。错误地址: %s", url)
+	}
+
+	if !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") {
+		return fmt.Errorf("回调地址必须以 http:// 或 https:// 开头。当前值: %s", url)
+	}
+
+	return nil
+}
 
 func setIfNotEmpty(m map[string]string, key, value string) {
 	if value != "" {

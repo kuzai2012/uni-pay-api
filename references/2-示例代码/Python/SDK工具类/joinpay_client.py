@@ -113,6 +113,11 @@ class JoinPayClient:
 
     def _build_unified_params(self, **kwargs) -> Dict[str, str]:
         """构建统一支付下单参数"""
+        # 校验回调地址（汇聚服务端会拒绝 localhost/127.0.0.1 等内网地址）
+        notify_url = kwargs.get("notify_url", "")
+        if notify_url:
+            self._validate_notify_url(notify_url)
+
         p = {
             "p0_Version": kwargs.get("version", self.version),
             "p1_MerchantNo": self.merchant_no,
@@ -120,7 +125,7 @@ class JoinPayClient:
             "p3_Amount": kwargs.get("amount", ""),
             "p4_Cur": kwargs.get("cur", "1"),
             "p5_ProductName": kwargs.get("product_name", ""),
-            "p9_NotifyUrl": kwargs.get("notify_url", ""),
+            "p9_NotifyUrl": notify_url,
             "q1_FrpCode": kwargs.get("frp_code", ""),
             "qa_TradeMerchantNo": kwargs.get("trade_merchant_no", ""),
         }
@@ -172,3 +177,34 @@ class JoinPayClient:
             return {"ra_Code": "-1", "rb_CodeMsg": f"网络错误: {e.reason}"}
         except Exception as e:
             return {"ra_Code": "-1", "rb_CodeMsg": f"请求异常: {str(e)}"}
+
+    @staticmethod
+    def _validate_notify_url(url: str) -> None:
+        """
+        校验回调地址合法性
+
+        汇聚支付服务端会校验 p9_NotifyUrl，拒绝以下地址：
+        - localhost / 127.0.0.1（汇聚服务器无法访问你的本机）
+        - 10.x / 172.16-31.x / 192.168.x（内网地址）
+
+        Args:
+            url: 回调地址
+
+        Raises:
+            ValueError: 地址不合法时抛出
+        """
+        if not url or not url.strip():
+            return
+        lower = url.strip().lower()
+        import re
+        if lower.startswith(("http://localhost", "https://localhost")):
+            raise ValueError(
+                "回调地址不能使用 localhost！本地开发请使用内网穿透工具(ngrok/cpolar/frp)，"
+                f"或使用测试服务器公网地址。错误地址: {url}"
+            )
+        if re.match(r".*://127\.0?\.?0?\.?[0-9]?.*", lower) or "127.1." in lower:
+            raise ValueError(f"回调地址不能使用 127.0.0.x 回环地址！错误地址: {url}")
+        if re.match(r"^https?://(?:10\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.).*", lower):
+            raise ValueError(f"回调地址不能使用内网IP！汇聚服务端无法从外网访问。错误地址: {url}")
+        if not lower.startswith(("http://", "https://")):
+            raise ValueError(f"回调地址必须以 http:// 或 https:// 开头。当前值: {url}")

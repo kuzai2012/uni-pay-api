@@ -53,6 +53,14 @@ public class PayController {
                 return result;
             }
 
+            // 回调地址校验（汇聚服务端会拒绝 localhost/127.0.0.1 等无法从外网访问的地址）
+            String urlError = validateNotifyUrl(notifyUrl);
+            if (urlError != null) {
+                result.put("success", false);
+                result.put("message", urlError);
+                return result;
+            }
+
             // 调用下单接口
             JSONObject response = joinPayService.createScanPayOrder(
                 orderNo, amount, productName, frpCode, notifyUrl
@@ -363,5 +371,51 @@ public class PayController {
         }
 
         return result;
+    }
+
+    /**
+     * 校验回调地址是否合法
+     *
+     * 汇聚支付服务端会校验 p9_NotifyUrl / p6_NotifyUrl，拒绝以下地址：
+     * - localhost / 127.0.0.1（服务端无法回调到你的本机）
+     * - 10.x.x.x / 172.16-31.x.x / 192.168.x.x（内网地址）
+     * - 空值或不合法的URL格式
+     *
+     * @param url 回调地址
+     * @return null=通过，非空=错误提示信息
+     */
+    private String validateNotifyUrl(String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return null; // 允许为空，使用默认配置
+        }
+        String lower = url.trim().toLowerCase();
+        if (lower.startsWith("http://localhost") || lower.startsWith("https://localhost")) {
+            return "回调地址不能使用 localhost！汇聚服务端无法访问你的本机。"
+                + "本地开发请使用内网穿透工具(ngrok/cpolar/frp)暴露公网地址，或使用测试服务器地址。";
+        }
+        if (lower.contains("://127.0.0.") || lower.contains("://127.1.")) {
+            return "回调地址不能使用 127.0.0.x 回环地址！"
+                + "请使用公网可访问的URL作为回调地址。";
+        }
+        // 检查内网地址段
+        if (lower.matches("^https?://(?:10\\.|172\\.(?:1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.).*")) {
+            return "回调地址不能使用内网IP地址（" + extractHost(url) + "）！"
+                + "汇聚服务端需要从公网访问此地址，请使用公网域名或IP。";
+        }
+        // 基本URL格式检查
+        if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
+            return "回调地址必须以 http:// 或 https:// 开头，当前值: " + url;
+        }
+        return null; // 通过校验
+    }
+
+    private String extractHost(String url) {
+        try {
+            String host = url.replaceFirst("^https?://", "");
+            int slash = host.indexOf('/');
+            return slash > 0 ? host.substring(0, slash) : host;
+        } catch (Exception e) {
+            return url;
+        }
     }
 }

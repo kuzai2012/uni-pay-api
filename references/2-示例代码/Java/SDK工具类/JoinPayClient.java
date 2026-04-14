@@ -146,7 +146,15 @@ public class JoinPayClient {
         if (req.productDesc != null) params.put("p6_ProductDesc", req.productDesc);
         if (req.mp != null) params.put("p7_Mp", req.mp);
         if (req.returnUrl != null) params.put("p8_ReturnUrl", req.returnUrl);
-        params.put("p9_NotifyUrl", req.notifyUrl != null ? req.notifyUrl : "");
+
+        // 回调地址校验（汇聚服务端会拒绝 localhost/127.0.0.1 等内网地址）
+        String notifyUrl = req.notifyUrl;
+        if (notifyUrl == null || notifyUrl.isEmpty()) {
+            notifyUrl = "";
+        } else {
+            validateNotifyUrl(notifyUrl); // 不合法则抛异常
+        }
+        params.put("p9_NotifyUrl", notifyUrl);
         params.put("q1_FrpCode", req.frpCode);
         if (req.subMerchantNo != null) params.put("q3_SubMerchantNo", req.subMerchantNo);
         if (req.isShowPic != null) params.put("q4_IsShowPic", req.isShowPic);
@@ -239,6 +247,38 @@ public class JoinPayClient {
     private String maskSensitiveData(String data) {
         return data.replaceAll("(merchant_key|rsa_private_key)[^&]*", "$1=***")
                    .replaceAll("(hmac=)[^&]*", "$1***");
+    }
+
+    /**
+     * 校验回调地址合法性
+     *
+     * 汇聚支付服务端会校验 p9_NotifyUrl，拒绝以下地址：
+     * - localhost / 127.0.0.1（汇聚服务器无法访问你的本机）
+     * - 10.x / 172.16-31.x / 192.168.x（内网地址）
+     *
+     * @param url 回调地址
+     * @throws IllegalArgumentException 地址不合法时抛出
+     */
+    private void validateNotifyUrl(String url) {
+        if (url == null || url.trim().isEmpty()) return;
+        String lower = url.trim().toLowerCase();
+        String error;
+
+        if (lower.startsWith("http://localhost") || lower.startsWith("https://localhost")) {
+            error = "回调地址不能使用 localhost！"
+                  + "本地开发请使用内网穿透工具(ngrok/cpolar/frp)，或使用测试服务器公网地址。"
+                  + "错误地址: " + url;
+        } else if (lower.matches(".*://127\\.0?\\.?0?\\.?[0-9]?.*") || lower.contains("127.1.")) {
+            error = "回调地址不能使用 127.0.0.x 回环地址！错误地址: " + url;
+        } else if (lower.matches("^https?://(?:10\\.|172\\.(?:1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.).*")) {
+            error = "回调地址不能使用内网IP！汇聚服务端无法从外网访问。错误地址: " + url;
+        } else if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
+            error = "回调地址必须以 http:// 或 https:// 开头。当前值: " + url;
+        } else {
+            return; // 通过
+        }
+        System.err.println("[JoinPay] 回调地址校验失败: " + error);
+        throw new IllegalArgumentException(error);
     }
 
     // ==================== 请求对象 ====================

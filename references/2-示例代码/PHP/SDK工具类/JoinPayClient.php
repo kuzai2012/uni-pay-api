@@ -50,7 +50,7 @@ class JoinPayClient
         $request = array_merge([
             'p0_Version' => $this->version,
             'p1_MerchantNo' => $this->merchantNo,
-            'p9_NotifyURL' => '',
+            'p9_NotifyUrl' => '',
             'qa_TradeMerchantNo' => '',
         ], $params);
         
@@ -151,6 +151,9 @@ class JoinPayClient
     {
         // 过滤空值并签名
         $params = $this->filterEmpty($params);
+
+        // 校验回调地址（汇聚服务端会拒绝 localhost/127.0.0.1 等内网地址）
+        $this->validateNotifyUrl($params['p9_NotifyUrl'] ?? '');
         
         // 生成签名
         if ($this->signType === 'RSA') {
@@ -206,5 +209,40 @@ class JoinPayClient
             if (is_string($v) && trim($v) === '') return false;
             return true;
         });
+    }
+
+    /**
+     * 校验回调地址合法性
+     *
+     * 汇聚支付服务端会校验 p9_NotifyUrl，拒绝以下地址：
+     * - localhost / 127.0.0.1（汇聚服务器无法访问你的本机）
+     * - 10.x / 172.16-31.x / 192.168.x（内网地址）
+     *
+     * @param string $url 回调地址
+     * @throws \InvalidArgumentException 地址不合法时抛出
+     */
+    protected function validateNotifyUrl(string $url): void
+    {
+        if ($url === '' || trim($url) === '') return;
+
+        $lower = strtolower(trim($url));
+
+        if (str_starts_with($lower, 'http://localhost') || str_starts_with($lower, 'https://localhost')) {
+            throw new \InvalidArgumentException(
+                '回调地址不能使用 localhost！本地开发请使用内网穿透工具(ngrok/cpolar/frp)，或使用测试服务器公网地址。错误地址: ' . $url
+            );
+        }
+
+        if (preg_match('#.*://127\.0?\.?0?\.?[0-9]?.*#', $lower) || str_contains($lower, '127.1.')) {
+            throw new \InvalidArgumentException('回调地址不能使用 127.0.0.x 回环地址！错误地址: ' . $url);
+        }
+
+        if (preg_match('#^https?://(?:10\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.)#', $lower)) {
+            throw new \InvalidArgumentException('回调地址不能使用内网IP！汇聚服务端无法从外网访问。错误地址: ' . $url);
+        }
+
+        if (!str_starts_with($lower, 'http://') && !str_starts_with($lower, 'https://')) {
+            throw new \InvalidArgumentException('回调地址必须以 http:// 或 https:// 开头。当前值: ' . $url);
+        }
     }
 }
