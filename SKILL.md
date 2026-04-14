@@ -22,23 +22,8 @@ disable: false
 **核心特征**：
 - ✅ **可直接写入用户项目文件**（使用 `write_to_file` / `replace_in_file`）
 - ✅ 使用框架级模板生成代码（Controller + Service + Config）
-- ✅ 最小化交互（首次收集全部需求后一路执行）
+- ✅ **参数前置收集**（在一切操作之前先收齐所有必要参数）
 - ✅ 完成后自动触发质量评估
-
-**执行流程**：
-```
-用户："帮我接入微信扫码支付"
-  ↓
-① 扫描项目 → 识别框架（Spring Boot / Django / Express / ...）
-  ↓
-② 一次性收集：签名方式、商户号、密钥、回调地址
-  ↓
-③ 加载框架模板 → 替换占位符 → 写入项目对应目录
-  ↓
-④ CLI脚本测试验证（可选）
-  ↓
-⑤ 输出接入报告 + 质量评估
-```
 
 ### 模式B：参考咨询模式
 
@@ -66,6 +51,20 @@ disable: false
    - **③ 收集信息**：用户同意后再告知需要哪些信息并逐项收集，收齐才能执行。
    - **④ 执行前确认**：准备执行操作前，简要说明即将做什么，确认用户同意后再执行；涉及线上环境须额外提示风险。
 
+4. **快速接入模式的参数前置收集原则**（仅限模式A）：
+   - **必须在项目扫描、模板加载、代码写入之前的第一个动作就是收集参数**
+   - **必须一次性收齐所有必要参数**，不要分多轮询问
+   - **必须使用 `ask_followup_question` 工具以结构化表单形式收集**，不要逐个文字提问
+   - 收齐参数后，将参数值缓存到上下文中供后续所有步骤使用，后续步骤不再重复询问
+
+5. **接口地址与参数的稳定性铁律**：
+   - > ‼️ **汇聚支付的接口地址、请求参数名、响应字段名是固定不变的。**
+   - 测试环境地址恒定为 `https://trade.joinpay.cc`
+   - 生产环境地址恒定为 `https://trade.joinpay.com`
+   - 所有请求参数名（如 `p0_Version`、`p1_MerchantNo`、`p9_NotifyUrl`）大小写敏感，**不得擅自修改或猜测**
+   - 响应字段 `ra_Code` / `rb_CodeMsg` 格式固定
+   - Agent 在生成代码或调试问题时，**始终以 skill 内的 SDK 工具类和文档为准**，不得凭记忆或猜测编造参数名
+
 ---
 
 ## 能力概览
@@ -83,77 +82,203 @@ disable: false
 
 ## 能力0：快速接入
 
-> 用户表达接入意图时触发，自动扫描项目并生成框架级代码。
+> 用户表达接入意图时触发，**首先收集参数，然后扫描项目并生成框架级代码**。
+
+### ⚡ 步骤0：前置参数收集（最重要！）
+
+> ‼️ **这是快速接入模式的第一个步骤，必须在任何其他操作之前完成。**
+>
+> ‼️ **不要先扫描项目再问参数！不要先生成代码再补参数！**
+
+当用户触发快速接入模式且已获得用户同意后，**立即**使用 `ask_followup_question` 以**单次结构化表单**收集以下全部必要信息：
+
+#### 必须收集的参数清单
+
+| # | 参数字段 | 必填 | 说明 | 选项/格式要求 |
+|---|---------|------|------|--------------|
+| 1 | `sign_type` | ✅ | 签名方式 | 单选：`MD5` / `RSA` |
+| 2 | `merchant_no` | ✅ | 商户号 | 纯数字字符串 |
+| 3 | `base_url` | ✅ | 接口环境 | 单选：`测试环境(https://trade.joinpay.cc)` / `生产环境(https://trade.joinpay.com)` |
+| 4 | `notify_url` | ✅ | 异步回调地址 | URL格式，**不得为 localhost/127.0.0.1/内网IP** |
+| 5 | `merchant_key` | 条件必填 | MD5密钥 | 仅 MD5 模式必填，32位字符串 |
+| 6 | `rsa_private_key` | 条件必填 | RSA私钥 | 仅 RSA 模式必填，PKCS8 PEM 格式 |
+| 7 | `rsa_public_key` | 条件必填 | RSA公钥 | 仅 RSA 模式建议填写，PKCS8 PEM 格式 |
+| 8 | `trade_merchant_no` | ❌ 可选 | 报备商户号 | 服务商模式时填写 |
+
+#### ask_followup_question 调用方式
+
+Agent 应构建一次 `ask_followup_question` 调用，将所有必填项放入 questions 数组：
+
+```json
+{
+  "title": "汇聚支付快速接入 - 参数配置",
+  "questions": [
+    {
+      "id": "sign_type",
+      "question": "请选择签名方式：",
+      "options": ["MD5（简单快捷）", "RSA（安全性更高）"],
+      "multiSelect": false
+    },
+    {
+      "id": "merchant_no",
+      "question": "请输入您的汇聚支付商户号（在商户后台「账户信息」中查看）：",
+      "options": [],
+      "multiSelect": false
+    },
+    {
+      "id": "base_url",
+      "question": "请选择接口环境：",
+      "options": [
+        "测试环境 https://trade.joinpay.cc",
+        "生产环境 https://trade.joinpay.com"
+      ],
+      "multiSelect": false
+    },
+    {
+      "id": "notify_url",
+      "question": "请输入异步回调通知地址（⚠️ 不得使用 localhost/127.0.0.1/内网IP）：",
+      "options": [
+        "格式如 https://your-domain.com/api/pay/notify",
+        "本地开发需用 ngrok/cpolar 等内网穿透工具获取公网地址"
+      ],
+      "multiSelect": false
+    },
+    {
+      "id": "merchant_key",
+      "question": "请输入MD5签名密钥（32位，在商户后台「API设置」中申请）：",
+      "options": [],
+      "multiSelect": false
+    }
+  ]
+}
+```
+
+> 若用户选择 RSA 签名方式，最后一个问题替换为 rsa_private_key 和 rsa_public_key 的收集。
+
+#### 参数校验规则
+
+收集到参数后，Agent **必须当场校验**，不合格立即让用户修正：
+
+| 校验项 | 规则 | 不合格时的提示 |
+|--------|------|---------------|
+| merchant_no | 非空、纯数字 | `"商户号不能为空，请在汇聚商户后台 → 账户信息中查看"` |
+| base_url | 以 https:// 开头 | `"接口地址格式错误"` |
+| notify_url | 非 localhost/127.x/内网IP | `"❌ 回调地址不能使用 localhost 或内网IP！本地开发请先用 ngrok/cpolar 等内网穿透工具暴露公网地址，再将穿透后的地址填入此处"` |
+| notify_url | 以 http(s):// 开头 | `"回调地址必须是有效的URL格式"` |
+| merchant_key(MD5) | 非空 | `"MD5密钥不能为空，请在商户后台 → API设置中申请获取"` |
+| rsa_private_key(RSA) | 含 BEGIN PRIVATE KEY / END 标记 | `"RSA私钥格式不正确，应为 PKCS8 PEM 格式（含 -----BEGIN/END----- 标记）"` |
+
+> **所有校验通过后方可进入步骤1。任何一项不通过都应立即拦截，不继续后续步骤。**
+
+#### 参数缓存
+
+校验通过后将参数缓存供后续步骤引用：
+
+```
+__jp_sign_type         = "MD5" | "RSA"
+__jp_merchant_no       = 商户号
+__jp_base_url          = 接口地址(全称)
+__jp_notify_url        = 回调地址
+__jp_merchant_key      = MD5密钥 (MD5模式)
+__jp_rsa_private_key   = RSA私钥 (RSA模式)
+__jp_rsa_public_key    = RSA公钥 (RSA模式)
+__jp_trade_merchant_no = 报备商户号 (可选)
+```
 
 ### 支持的框架模板
 
 | 框架 | 模板位置 | 包含文件 |
 |------|----------|----------|
-| Spring Boot | `references/0-快速接入模板/SpringBoot/` | Config + Service + Controller + NotifyController |
+| Spring Boot | `references/0-快速接入模板/SpringBoot/` | Config + Service + Controller + NotifyController + SDK工具类 |
 
-### 执行步骤
+### 步骤1：扫描项目识别框架
 
-#### 步骤1：扫描项目识别框架
+> 此步骤在步骤0完成后执行。
 
-读取用户项目根目录的关键文件：
-- `pom.xml` 或 `build.gradle` → Java/Spring Boot
-- `requirements.txt` 或 `pyproject.toml` → Python/Django/FastAPI
-- `package.json` → Node.js/Express/Next.js
+读取项目根目录关键文件识别框架：
+- `pom.xml` 含 `spring-boot-starter-web` → Spring Boot
+- `build.gradle` 含 `org.springframework.boot` → Spring Boot
+- `requirements.txt` 含 `django` → Django
+- `package.json` 含 `express` → Express
 
-#### 步骤2：收集最小配置信息（一次性）
+若检测到的框架无对应模板，告知用户当前仅支持 Spring Boot，询问是否继续。
 
-```
-必需信息（4项）：
-1. 签名方式：MD5 或 RSA
-2. 商户号（merchant_no）
-3. 密钥：MD5密钥 或 RSA私钥
-4. 回调地址（notify_url）
+### 步骤2：加载模板并替换占位符
 
-可选信息：
-- 报备商户号（服务商模式）
-- RSA公钥（验签用）
-```
+读取 `references/0-快速接入模板/{框架}/` 下模板文件，用**步骤0缓存值**替换占位符：
 
-#### 步骤3：加载模板并替换占位符
+| 占位符 | 数据来源 | 说明 |
+|--------|----------|------|
+| `${PACKAGE}` | pom.xml groupId | Java包名，如 `com.example` |
+| `${BASE_URL}` | `__jp_base_url` | 接口地址 |
+| `${MERCHANT_NO}` | `__jp_merchant_no` | 商户号 |
+| `${MERCHANT_KEY}` | `__jp_merchant_key` | MD5密钥 |
+| `${RSA_PRIVATE_KEY}` | `__jp_rsa_private_key` | RSA私钥 |
+| `${RSA_PUBLIC_KEY}` | `__jp_rsa_public_key` | RSA公钥 |
+| `${SIGN_TYPE}` | `__jp_sign_type` | 签名方式 |
+| `${NOTIFY_URL}` | `__jp_notify_url` | 回调地址 |
 
-读取 `references/0-快速接入模板/{框架}/` 下的模板文件，替换 `${placeholder}` 占位符：
-- `${BASE_URL}` ← 接口地址（测试/生产）
-- `${MERCHANT_NO}` ← 商户号
-- `${MERCHANT_KEY}` ← MD5密钥
-- `${RSA_PRIVATE_KEY}` ← RSA私钥
-- `${SIGN_TYPE}` ← 签名方式
-- `${NOTIFY_URL}` ← 回调地址
+### 步骤3：写入项目
 
-#### 步骤4：写入项目
+按顺序写入：
 
-根据框架约定写入对应目录：
-- Spring Boot：`src/main/java/com/{company}/joinpay/` + `application.yml`
+1. **SDK工具类** → `{pkg}/joinpay/sdk/JoinPayClient.java` 等3个文件
+2. **配置类** → `{pkg}/joinpay/JoinPayConfig.java`
+3. **服务层** → `{pkg}/joinpay/JoinPayService.java`
+4. **Controller** → `{pkg}/joinpay/PayController.java`
+5. **回调Controller** → `{pkg}/joinpay/NotifyController.java`
+6. **配置追加** → `application.yml` 追加 joinpay 配置段
 
-#### 步骤5：验证（可选）
-
-使用 CLI 脚本测试下单：
-```bash
-python3 <skill_dir>/scripts/uni_pay_client.py pay --order-no TEST001 --amount 0.01 --product-name 测试 --frp-code WEIXIN_NATIVE
-```
-
-#### 步骤6：输出接入报告
+### 步骤4：输出接入报告
 
 ```
 ✅ 接入完成报告
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 框架：Spring Boot 2.x
-签名方式：MD5
-已写入文件：
-  - src/main/java/com/example/joinpay/JoinPayConfig.java
-  - src/main/java/com/example/joinpay/JoinPayService.java
-  - src/main/java/com/example/joinpay/PayController.java
-  - src/main/java/com/example/joinpay/NotifyController.java
-  - src/main/resources/application.yml (追加配置)
+签名方式：{MD5|RSA}
+接口环境：{测试|生产}
 
-下一步：
-1. 在 pom.xml 添加 fastjson 和 commons-codec 依赖
-2. 启动项目测试 /api/pay/create 接口
-3. 配置外网回调地址
+已写入文件（共8个）：
+  📄 src/main/java/{pkg}/joinpay/sdk/JoinPayClient.java
+  📄 src/main/java/{pkg}/joinpay/sdk/JoinPaySignature.java
+  📄 src/main/java/{pkg}/joinpay/sdk/JoinPayRsaSignature.java
+  📄 src/main/java/{pkg}/joinpay/JoinPayConfig.java
+  📄 src/main/java/{pkg}/joinpay/JoinPayService.java
+  📄 src/main/java/{pkg}/joinpay/PayController.java
+  📄 src/main/java/{pkg}/joinpay/NotifyController.java
+  📄 src/main/resources/application.yml (追加配置)
+
+🔜 下一步：
+1. pom.xml 添加 fastjson + commons-codec 依赖
+2. 启动项目，测试 POST /api/pay/create
+3. 用真实设备完成一笔小额支付并验证回调
+```
+
+### 完整流程示意
+
+```
+用户："帮我在我的项目里接入微信扫码支付"
+
+  Agent 执行：
+  ┌─────────────────────────────────────┐
+  │ ① 确认意图，征得用户同意              │
+  ├─────────────────────────────────────┤
+  │ ② ⚡ 步骤0：ask_followup_question   │
+  │   一次性收集全部参数（签名方式/商户号/  │
+  │   环境/回调地址/密钥）                │
+  ├─────────────────────────────────────┤
+  │ ③ 当场校验参数合法性                  │
+  │   （回调地址非localhost/密钥非空等）  │
+  ├─────────────────────────────────────┤
+  │ ④ 步骤1：扫描项目 → 识别Spring Boot  │
+  ├─────────────────────────────────────┤
+  │ ⑤ 步骤2：加载模板 + 替换占位符        │
+  │   （用步骤0缓存的实际参数值）          │
+  ├─────────────────────────────────────┤
+  │ ⑥ 步骤3：写入8个文件到项目            │
+  ├─────────────────────────────────────┤
+  │ ⑦ 步骤4：输出接入报告 + 下一步指引     │
+  └─────────────────────────────────────┘
 ```
 
 ### 模板使用指南
@@ -291,7 +416,7 @@ python3 <skill_dir>/scripts/uni_pay_client.py <command> [args...]
   "rsa_private_key": "RSA私钥(RSA签名用)",
   "rsa_public_key": "RSA公钥(验签用)",
   "base_url": "https://trade.joinpay.com",
-  "default_notify_url": "http://localhost:8080/notify",
+  "default_notify_url": "http://your-server.com/notify",
   "default_trade_merchant_no": "报备商户号",
   "sign_type": "MD5"
 }
@@ -304,4 +429,4 @@ python3 <skill_dir>/scripts/uni_pay_client.py <command> [args...]
 只需配置以下3个字段即可跑通测试：
 1. `default_merchant_no` — 商户号
 2. `merchant_key` — MD5密钥（32位）
-3. `base_url` — 接口地址（测试环境用 `https://trade.joinpay.cc`）
+3. `base_url` — 接口地址（测试环境用 `https://trade.joinpay.cc`，生产环境用 `https://trade.joinpay.com`）

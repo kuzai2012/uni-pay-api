@@ -1,105 +1,177 @@
 # 快速接入模板使用指南
 
-本文档供 AI Agent 读取，指导如何使用框架模板为用户生成支付接入代码。
+本文档供 AI Agent 读取，指导如何使用框架模板为用户生成汇聚支付接入代码。
+
+> ‼️ **核心原则：参数前置收集**
+>
+> 在执行本指南的任何步骤之前，**必须先完成 SKILL.md 步骤0的参数收集和校验**。
+> 只有当 `__jp_sign_type` / `__jp_merchant_no` 等参数已缓存到上下文中后，方可开始以下步骤。
+
+---
 
 ## 模板清单
 
 ```
 0-快速接入模板/
-├── SpringBoot/                    # Spring Boot 框架模板
-│   ├── sdk/                       # SDK工具类（必须复制）
-│   │   ├── JoinPayClient.java         # HTTP客户端
-│   │   ├── JoinPaySignature.java      # MD5签名工具
-│   │   └── JoinPayRsaSignature.java   # RSA签名工具
-│   ├── JoinPayConfig.java         # 配置类（读取 application.yml）
-│   ├── JoinPayService.java        # 核心服务（下单/查询/退款/回调验签）
-│   ├── PayController.java         # REST 接口层
-│   ├── NotifyController.java      # 异步回调接口
-│   └── application.yml.snippet    # 配置片段
-└── README.md                      # 本文档
+└── SpringBoot/                    # Spring Boot 框架模板
+    ├── sdk/                       # SDK工具类（必须复制）
+    │   ├── JoinPayClient.java         # HTTP客户端 + 回调地址校验
+    │   ├── JoinPaySignature.java      # MD5签名工具
+    │   └── JoinPayRsaSignature.java   # RSA签名工具
+    ├── JoinPayConfig.java         # @ConfigurationProperties 配置类
+    ├── JoinPayService.java        # 核心服务（下单/查询/退款/回调验签）
+    ├── PayController.java         # REST 接口层（7个接口）
+    ├── NotifyController.java      # 异步回调接口（支付+退款）
+    └── application.yml.snippet    # application.yml 配置片段
 ```
+
+---
 
 ## Agent 执行流程
 
-### 1. 检测项目框架
+### 前置条件检查
+
+在开始之前确认以下参数已在上下文缓存中（来自 SKILL.md 步骤0）：
+
+| 缓存变量 | 是否必须 | 来源 |
+|---------|---------|------|
+| `__jp_sign_type` | ✅ 必填 | ask_followup_question 收集 |
+| `__jp_merchant_no` | ✅ 必填 | ask_followup_question 收集 |
+| `__jp_base_url` | ✅ 必填 | ask_followup_question 收集 |
+| `__jp_notify_url` | ✅ 必填 | ask_followup_question 收集 |
+| `__jp_merchant_key` | MD5模式必填 | ask_followup_question 收集 |
+| `__jp_rsa_private_key` | RSA模式必填 | ask_followup_question 收集 |
+| `__jp_rsa_public_key` | RSA模式建议 | ask_followup_question 收集 |
+
+> **如果任何必填项缺失，立即回到步骤0重新收集，不要用默认值或猜测值继续！**
+
+### 步骤1：检测项目框架
 
 读取项目根目录的关键文件判断框架：
 
-| 文件 | 框架判断 |
-|------|----------|
-| `pom.xml` 包含 `spring-boot-starter-web` | Spring Boot |
-| `build.gradle` 包含 `org.springframework.boot` | Spring Boot |
-| `requirements.txt` 包含 `django` | Django |
-| `package.json` 包含 `express` | Express |
+| 文件 | 检测条件 | 框架判断 |
+|------|---------|---------|
+| `pom.xml` | 包含 `spring-boot-starter-web` | Spring Boot |
+| `build.gradle` | 包含 `org.springframework.boot` | Spring Boot |
+| `requirements.txt` | 包含 `django` | Django |
+| `package.json` | 包含 `express` | Express |
 
-### 2. 确定写入目录
+**当前仅支持 Spring Boot 模板**。若检测到其他框架：
+- 询问用户是否愿意使用 Spring Boot 模板代码（用户可自行适配）
+- 或告知用户暂无对应模板，仅提供参考咨询
 
-| 框架 | 基础包路径 | SDK包路径 |
-|------|-----------|----------|
-| Spring Boot | `src/main/java/{groupId}/joinpay/` | `src/main/java/{groupId}/joinpay/sdk/` |
+### 步骤2：确定包路径
 
-从 `pom.xml` 中提取 groupId，默认使用 `com.example`。
+从构建文件中提取 groupId：
 
-### 3. 读取模板并替换占位符
+| 文件 | 提取方式 | 默认值 |
+|------|---------|--------|
+| `pom.xml` | `<groupId>` 标签内容 | `com.example` |
+| `build.gradle` | `group` 属性 | `com.example` |
 
-占位符替换表：
+最终 Java 包路径 = `{groupId}.joinpay`
 
-| 占位符 | 数据来源 | 说明 |
-|--------|----------|------|
-| `${PACKAGE}` | 项目groupId | Java包名，如 `com.example` |
-| `${BASE_URL}` | config.json 或用户输入 | 接口地址 |
-| `${MERCHANT_NO}` | config.json 或用户输入 | 商户号 |
-| `${MERCHANT_KEY}` | config.json 或用户输入 | MD5密钥 |
-| `${RSA_PRIVATE_KEY}` | config.json 或用户输入 | RSA私钥（RSA模式） |
-| `${RSA_PUBLIC_KEY}` | config.json 或用户输入 | RSA公钥（RSA模式） |
-| `${SIGN_TYPE}` | 用户选择 | MD5 或 RSA |
-| `${NOTIFY_URL}` | config.json 或用户输入 | 回调地址 |
+### 步骤3：读取并替换占位符
 
-### 4. 写入文件
+按以下替换表，将**步骤0缓存的实际参数值**写入模板：
 
-使用 `write_to_file` 工具写入以下文件：
+| 占位符 | 数据来源 | 示例值 |
+|--------|---------|--------|
+| `${PACKAGE}` | pom.xml groupId | `com.example` |
+| `${BASE_URL}` | `__jp_base_url` | `https://trade.joinpay.cc` |
+| `${MERCHANT_NO}` | `__jp_merchant_no` | `888100500008456` |
+| `${MERCHANT_KEY}` | `__jp_merchant_key` (MD5) | `f1075a476dff466cb67d348d4669bbd5` |
+| `${RSA_PRIVATE_KEY}` | `__jp_rsa_private_key` (RSA) | `-----BEGIN...` |
+| `${RSA_PUBLIC_KEY}` | `__jp_rsa_public_key` (RSA) | `-----BEGIN...` |
+| `${SIGN_TYPE}` | `__jp_sign_type` | `MD5` 或 `RSA` |
+| `${NOTIFY_URL}` | `__jp_notify_url` | `https://example.com/api/pay/notify` |
 
-**SDK工具类**（必须）：
+> **⚠️ 接口地址不可修改**：`${BASE_URL}` 只能是 `https://trade.joinpay.cc`（测试）或 `https://trade.joinpay.com`（生产），不得编造其他地址。
+
+### 步骤4：写入项目（严格顺序）
+
+按以下顺序使用 `write_to_file` 写入：
+
+#### 第1批：SDK工具类（3个文件）
+
 ```
-src/main/java/{groupId}/joinpay/sdk/JoinPayClient.java
-src/main/java/{groupId}/joinpay/sdk/JoinPaySignature.java
-src/main/java/{groupId}/joinpay/sdk/JoinPayRsaSignature.java
+src/main/java/{PACKAGE}/joinpay/sdk/JoinPayClient.java
+src/main/java/{PACKAGE}/joinpay/sdk/JoinPaySignature.java
+src/main/java/{PACKAGE}/joinpay/sdk/JoinPayRsaSignature.java
 ```
 
-**业务代码**：
+> 这些文件从 `SpringBoot/sdk/` 目录读取，**不做占位符替换**（它们通过配置类获取参数）。
+
+#### 第2批：业务代码（4个文件）
+
+读取模板文件，替换 `${PLACEHOLDER}` 后写入：
+
 ```
-src/main/java/{groupId}/joinpay/JoinPayConfig.java
-src/main/java/{groupId}/joinpay/JoinPayService.java
-src/main/java/{groupId}/joinpay/PayController.java
-src/main/java/{groupId}/joinpay/NotifyController.java
+src/main/java/{PACKAGE}/joinpay/JoinPayConfig.java       ← 替换 ${PACKAGE}
+src/main/java/{PACKAGE}/joinpay/JoinPayService.java      ← 替换 ${PACKAGE}
+src/main/java/{PACKAGE}/joinpay/PayController.java       ← 替换 ${PACKAGE}
+src/main/java/{PACKAGE}/joinpay/NotifyController.java    ← 替换 ${PACKAGE}
 ```
 
-配置片段追加到 `src/main/resources/application.yml`。
+#### 第3批：配置追加
 
-### 5. 提示依赖
+将 `application.yml.snippet` 内容**追加**（不是覆盖）到项目的 `src/main/resources/application.yml` 文件末尾。
 
-如果使用 Spring Boot 模板，提示用户添加 Maven 依赖：
+> 如果 application.yml 已有 `joinpay:` 配置段，应提示用户手动合并，不要自动覆盖。
+
+### 步骤5：输出接入报告
+
+写入完成后，向用户展示：
+
+```markdown
+✅ 接入完成报告
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+框架：Spring Boot 2.x
+签名方式：{MD5|RSA}
+接口环境：{测试|生产}
+
+已写入文件（共8个）：
+  📄 src/main/java/{pkg}/joinpay/sdk/JoinPayClient.java
+  📄 src/main/java/{pkg}/joinpay/sdk/JoinPaySignature.java
+  📄 src/main/java/{pkg}/joinpay/sdk/JoinPayRsaSignature.java
+  📄 src/main/java/{pkg}/joinpay/JoinPayConfig.java
+  📄 src/main/java/{pkg}/joinpay/JoinPayService.java
+  📄 src/main/java/{pkg}/joinpay/PayController.java
+  📄 src/main/java/{pkg}/joinpay/NotifyController.java
+  📄 src/main/resources/application.yml (追加配置)
+
+🔜 下一步：
+1. 在 pom.xml 添加 Maven 依赖（见下方）
+2. 启动项目，测试 POST /api/pay/create
+3. 用真实设备完成一笔小额支付并验证回调
+```
+
+### 步骤6：提示依赖
+
+提醒用户添加以下 Maven 依赖到 `pom.xml`：
 
 ```xml
-<!-- pom.xml 添加 -->
+<!-- fastjson（JSON解析） -->
 <dependency>
     <groupId>com.alibaba</groupId>
     <artifactId>fastjson</artifactId>
     <version>1.2.83</version>
 </dependency>
+
+<!-- commons-codec（编码工具） -->
 <dependency>
     <groupId>commons-codec</groupId>
     <artifactId>commons-codec</artifactId>
     <version>1.15</version>
 </dependency>
 
-<!-- Spring Boot Web（如未添加）-->
+<!-- spring-boot-starter-web（如项目中没有） -->
 <dependency>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-web</artifactId>
 </dependency>
 
-<!-- Configuration Properties -->
+<!-- spring-boot-configuration-processor（配置属性提示） -->
 <dependency>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-configuration-processor</artifactId>
@@ -107,64 +179,43 @@ src/main/java/{groupId}/joinpay/NotifyController.java
 </dependency>
 ```
 
-## 接入后自检清单
-
-代码写入后，Agent 应引导用户检查：
-
-- [ ] `application.yml` 配置是否正确（商户号、密钥、回调地址）
-- [ ] Maven 依赖是否添加（fastjson、commons-codec）
-- [ ] 回调地址是否外网可访问（生产环境）
-- [ ] 是否已测试下单接口 `POST /api/pay/create`
-- [ ] 是否已测试回调接收
+---
 
 ## API 接口清单
 
 写入完成后，用户可使用以下接口：
 
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/api/pay/create` | POST | 扫码支付下单 |
-| `/api/pay/wxjsapi` | POST | 微信公众号/小程序支付 |
-| `/api/pay/card` | POST | 付款码支付 |
-| `/api/pay/query` | GET | 订单查询 |
-| `/api/pay/refund` | POST | 申请退款 |
-| `/api/pay/refund/query` | GET | 退款查询 |
-| `/api/pay/close` | POST | 关闭订单 |
-| `/notify/pay` | POST | 支付回调 |
-| `/notify/refund` | POST | 退款回调 |
+| 接口 | 方法 | 说明 | 请求参数关键字段 |
+|------|------|------|----------------|
+| `/api/pay/create` | POST | 扫码支付下单 | orderNo, amount, productName, frpCode |
+| `/api/pay/wxjsapi` | POST | 微信公众号/小程序支付 | orderNo, amount, productName, frpCode, openId, appId |
+| `/api/pay/card` | POST | 付款码支付（被扫） | orderNo, amount, productName, frpCode, authCode |
+| `/api/pay/query` | GET | 订单查询 | orderNo |
+| `/api/pay/refund` | POST | 申请退款 | orderNo, refundOrderNo, refundAmount, reason |
+| `/api/pay/refund/query` | GET | 退款查询 | refundOrderNo |
+| `/api/pay/close` | POST | 关闭订单 | orderNo, frpCode |
+| `/notify/pay` | POST | 支付结果异步回调 | （汇聚服务端POST调用） |
+| `/notify/refund` | POST | 退款结果异步回调 | （汇聚服务端POST调用） |
 
-## 示例对话
+---
 
-```
-用户：帮我在Spring Boot项目里接入微信扫码支付，用MD5签名
+## 接入后自检清单
 
-AI：好的，我来帮你快速接入。
+代码写入后，引导用户逐项检查：
 
-[读取项目 pom.xml，提取 groupId=com.mystore]
+- [ ] `application.yml` 中 joinpay 配置段的商户号、密钥、回调地址是否正确
+- [ ] pom.xml 是否已添加 fastjson 和 commons-codec 依赖
+- [ ] 项目是否能正常编译启动（无编译错误）
+- [ ] 回调地址是否外网可访问（生产环境必须）
+- [ ] 是否已用 Postman/curl 测试下单接口 `POST /api/pay/create`
+- [ ] 是否已完成一笔真实小额支付的端到端验证（含回调）
 
-[读取模板文件，替换 ${PACKAGE} 为 com.mystore]
-
-[写入SDK工具类]
-[写入业务代码]
-
-✅ 接入完成！已写入以下文件：
-- src/main/java/com/mystore/joinpay/sdk/JoinPayClient.java
-- src/main/java/com/mystore/joinpay/sdk/JoinPaySignature.java
-- src/main/java/com/mystore/joinpay/sdk/JoinPayRsaSignature.java
-- src/main/java/com/mystore/joinpay/JoinPayConfig.java
-- src/main/java/com/mystore/joinpay/JoinPayService.java
-- src/main/java/com/mystore/joinpay/PayController.java
-- src/main/java/com/mystore/joinpay/NotifyController.java
-
-请完成以下步骤：
-1. 在 pom.xml 添加 fastjson 和 commons-codec 依赖
-2. 在 application.yml 中添加汇聚支付配置（商户号、密钥、回调地址）
-3. 启动项目测试 POST /api/pay/create
-```
+---
 
 ## 注意事项
 
-1. **签名方式**：MD5模式只需配置 `merchant-key`，RSA模式需配置 `rsa-private-key` 和 `rsa-public-key`
-2. **回调地址**：生产环境必须是外网可访问的HTTPS地址
-3. **幂等处理**：回调处理逻辑必须做幂等校验，避免重复处理同一订单
-4. **安全性**：密钥不要硬编码，建议使用环境变量或配置中心
+1. **签名方式与密钥匹配**：`sign-type: MD5` 时只需配 `merchant-key`；`sign-type: RSA` 时需配 `rsa-private-key`
+2. **回调地址校验**：所有模板代码均已内置回调地址校验，会拦截 localhost/127.0.0.1/内网IP 并给出明确错误提示
+3. **幂等处理**：NotifyController 中的业务处理方法（handlePaySuccess）需要用户根据实际业务实现幂等逻辑
+4. **安全性**：生产环境中密钥建议使用环境变量或配置中心管理，不要明文写在 yml 中
+5. **接口地址不变性**：汇聚支付接口地址固定为 `trade.joinpay.cc`（测试）/ `trade.joinpay.com`（生产），请求参数名大小写敏感，不得擅自修改

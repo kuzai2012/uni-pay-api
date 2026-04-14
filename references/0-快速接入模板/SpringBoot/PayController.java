@@ -132,58 +132,6 @@ public class PayController {
     }
 
     /**
-     * 创建微信JSAPI支付订单（公众号/小程序）
-     *
-     * POST /api/pay/wxjsapi
-     *
-     * 请求参数：
-     * - orderNo: 商户订单号
-     * - amount: 订单金额（元）
-     * - productName: 商品名称
-     * - frpCode: 交易类型（WEIXIN_GZH 或 WEIXIN_XCX）
-     * - openId: 微信用户OpenId
-     * - appId: 微信AppId
-     *
-     * @return 下单结果（包含调起支付的参数）
-     */
-    @PostMapping("/wxjsapi")
-    public Map<String, Object> createWxJsapiOrder(@RequestBody Map<String, String> params) {
-        Map<String, Object> result = new HashMap<>();
-
-        try {
-            String orderNo = params.get("orderNo");
-            String amount = params.get("amount");
-            String productName = params.get("productName");
-            String frpCode = params.get("frpCode");
-            String openId = params.get("openId");
-            String appId = params.get("appId");
-
-            // 参数校验
-            if (orderNo == null || amount == null || openId == null || appId == null) {
-                result.put("success", false);
-                result.put("message", "缺少必要参数：orderNo, amount, openId, appId");
-                return result;
-            }
-
-            // 调用下单接口
-            JSONObject response = joinPayService.createWxJsapiOrder(
-                orderNo, amount, productName, frpCode, openId, appId
-            );
-
-            // 返回原始响应，让商户自行选择需要的字段
-            String raCode = response.getString("ra_Code");
-            result.put("success", "100".equals(raCode));
-            result.put("data", response);  // 原封不动返回汇聚支付的完整响应
-
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "下单异常: " + e.getMessage());
-        }
-
-        return result;
-    }
-
-    /**
      * 创建付款码支付订单（被扫）
      *
      * POST /api/pay/card
