@@ -1,0 +1,29 @@
+# 汇聚支付配置
+# 将以下配置添加到你的 application.yml 文件中
+
+joinpay:
+  # 汇聚支付网关地址
+  # 测试环境: https://trade.joinpay.cc
+  # 生产环境: https://trade.joinpay.com
+  base-url: ${BASE_URL}
+
+  # 商户号（从汇聚支付商户后台获取）
+  merchant-no: ${MERCHANT_NO}
+
+  # 签名方式: MD5 或 RSA
+  sign-type: ${SIGN_TYPE}
+
+  # MD5签名密钥（32位），在商户后台申请
+  # 仅 MD5 模式需要
+  merchant-key: ${MERCHANT_KEY}
+
+  # RSA商户私钥（PKCS8 PEM格式）
+  # 仅 RSA 模式需要
+  rsa-private-key: ${RSA_PRIVATE_KEY}
+
+  # RSA平台公钥（PKCS8 PEM格式），用于验证回调签名
+  # 仅 RSA 模式需要
+  rsa-public-key: ${RSA_PUBLIC_KEY}
+
+  # 默认回调地址（需要外网可访问）
+  default-notify-url: ${NOTIFY_URL}

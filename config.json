@@ -1,6 +1,6 @@
 {
-  "default_merchant_no": "888XXXXXXXXXXX",
-  "merchant_key": "f1075a476XXXXXXXXX",
+  "default_merchant_no": "888100500008456",
+  "merchant_key": "f1075a476dff466cb67d348d4669bbd5",
   "base_url": "https://trade.joinpay.cc",
   "default_notify_url": "http://10.30.50.49:8090/notify_url.jsp",
   "default_trade_merchant_no": "",
@@ -17,5 +17,24 @@
     "rsa_private_key": "RSA商户私钥(PKCS8 PEM格式)，用于请求签名。仅在sign_type为RSA时填写。示例: -----BEGIN PRIVATE KEY-----\\nMIIEvgIBADANBg...\\n-----END PRIVATE KEY-----",
     "rsa_public_key": "RSA平台公钥(PKCS8 PEM格式)，用于验证回调签名。仅在sign_type为RSA时填写。示例: -----BEGIN PUBLIC KEY-----\\nMIIBIjANBgkqh...\\n-----END PUBLIC KEY-----",
     "sign_type": "签名方式: MD5 或 RSA，二选一"
+  },
+
+  "_quick_start": {
+    "description": "最小可用配置 - 只需填写以下3个字段即可跑通测试",
+    "required_fields": [
+      "default_merchant_no",
+      "merchant_key",
+      "base_url"
+    ],
+    "setup_order": [
+      "1. 从汇聚支付商户后台获取商户号(default_merchant_no)",
+      "2. 在商户后台申请MD5密钥(merchant_key)",
+      "3. 测试环境使用 trade.joinpay.cc，生产环境使用 trade.joinpay.com"
+    ],
+    "first_run_check": [
+      "确认 merchant_key 不是空值或占位符",
+      "确认 base_url 已根据环境正确设置",
+      "确认 default_notify_url 外网可访问（生产环境）"
+    ]
   }
 }
