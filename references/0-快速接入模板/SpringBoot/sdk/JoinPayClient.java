@@ -49,6 +49,7 @@ public class JoinPayClient {
 
     public JSONObject refund(RefundRequest request) throws Exception {
         Map<String, Object> params = new LinkedHashMap<>();
+        // 退款接口独立版本线，当前 ≥ 2.3
         params.put("p0_Version", "2.3");
         params.put("p1_MerchantNo", merchantNo);
         params.put("p2_OrderNo", request.orderNo);
@@ -78,6 +79,8 @@ public class JoinPayClient {
 
     public JSONObject closeOrder(String orderNo, String frpCode, String trxNo) throws Exception {
         Map<String, Object> params = new LinkedHashMap<>();
+        // 关单接口独立版本线，当前 ≥ 1.0
+        params.put("p0_Version", "1.0");
         params.put("p1_MerchantNo", merchantNo);
         params.put("p2_OrderNo", orderNo);
         params.put("p3_FrpCode", frpCode);
@@ -89,7 +92,8 @@ public class JoinPayClient {
 
     public JSONObject queryFunds(String orderNo) throws Exception {
         Map<String, Object> params = new LinkedHashMap<>();
-        params.put("p0_Version", version);
+        // 资金管控查询独立版本线，当前 ≥ 1.0
+        params.put("p0_Version", "1.0");
         params.put("p1_MerchantNo", merchantNo);
         params.put("p2_OrderNo", orderNo);
         return post("/tradeRt/queryFundsControlOrder", params);
@@ -101,7 +105,8 @@ public class JoinPayClient {
         params.put("p1_MerchantNo", merchantNo);
         params.put("p2_OrderNo", req.orderNo);
         params.put("p3_Amount", req.amount);
-        params.put("p4_Cur", req.cur != null ? req.cur : "1");
+        // 币种: 人民币固定为"1"，汇聚服务端规定不允许传其他值
+        params.put("p4_Cur", "1");
         params.put("p5_ProductName", req.productName);
         if (req.productDesc != null) params.put("p6_ProductDesc", req.productDesc);
         if (req.mp != null) params.put("p7_Mp", req.mp);

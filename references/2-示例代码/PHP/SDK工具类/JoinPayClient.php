@@ -116,10 +116,11 @@ class JoinPayClient
     /**
      * 关闭订单
      */
-    public function closeOrder(string $orderNo, string $frpCode, 
+    public function closeOrder(string $orderNo, string $frpCode,
                                 string $trxNo = ''): array
     {
         $params = [
+            'p0_Version' => '1.0',  // 关单接口独立版本线，当前 ≥ 1.0
             'p1_MerchantNo' => $this->merchantNo,
             'p2_OrderNo' => $orderNo,
             'p3_FrpCode' => $frpCode,
@@ -136,7 +137,7 @@ class JoinPayClient
     public function queryFunds(string $orderNo): array
     {
         return $this->post('/tradeRt/queryFundsControlOrder', [
-            'p0_Version' => $this->version,
+            'p0_Version' => '1.0',  // 资金管控查询独立版本线，当前 ≥ 1.0
             'p1_MerchantNo' => $this->merchantNo,
             'p2_OrderNo' => $orderNo,
         ]);

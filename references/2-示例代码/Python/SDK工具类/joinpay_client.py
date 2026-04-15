@@ -93,6 +93,7 @@ class JoinPayClient:
     def close_order(self, order_no: str, frp_code: str, trx_no: str = "") -> dict:
         """关闭订单"""
         params = {
+            "p0_Version": "1.0",  # 关单接口独立版本线，当前 ≥ 1.0
             "p1_MerchantNo": self.merchant_no,
             "p2_OrderNo": order_no,
             "p3_FrpCode": frp_code,
@@ -104,7 +105,7 @@ class JoinPayClient:
     def query_funds(self, order_no: str) -> dict:
         """资金查询"""
         return self._post(self.API_PATHS["query_funds"], {
-            "p0_Version": self.version,
+            "p0_Version": "1.0",  # 资金管控查询独立版本线，当前 ≥ 1.0
             "p1_MerchantNo": self.merchant_no,
             "p2_OrderNo": order_no,
         })

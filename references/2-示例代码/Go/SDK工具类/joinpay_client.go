@@ -169,6 +169,7 @@ func (c *JoinPayClient) QueryRefundInfo(orderNo string) (APIResponse, error) {
 // CloseOrder 关闭订单
 func (c *JoinPayClient) CloseOrder(orderNo, frpCode, trxNo string) (APIResponse, error) {
 	params := map[string]string{
+		"p0_Version":    "1.0", // 关单接口独立版本线，当前 ≥ 1.0
 		"p1_MerchantNo": c.MerchantNo,
 		"p2_OrderNo":    orderNo,
 		"p3_FrpCode":    frpCode,
@@ -180,7 +181,7 @@ func (c *JoinPayClient) CloseOrder(orderNo, frpCode, trxNo string) (APIResponse,
 // QueryFunds 资金查询
 func (c *JoinPayClient) QueryFunds(orderNo string) (APIResponse, error) {
 	params := map[string]string{
-		"p0_Version":    c.Version,
+		"p0_Version":    "1.0", // 资金管控查询独立版本线，当前 ≥ 1.0
 		"p1_MerchantNo": c.MerchantNo,
 		"p2_OrderNo":    orderNo,
 	}
