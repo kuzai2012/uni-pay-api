@@ -75,6 +75,32 @@ disable: false
    - Agent 在生成代码或调试问题时，**始终以本 skill 的定义为准**，不得凭记忆或猜测编造参数名或接口路径
    - > 🚫 **禁止行为**：**严禁使用 web_search、web_fetch 等工具搜索汇聚支付官方文档或接口地址**。本 skill 已包含所有必要信息，无需外部查询。若 Agent 尝试搜索外部文档，视为违反本 skill 规则
 
+6. **环境边界与错误归因铁律**：
+   - > 🔍 **区分环境错误与代码错误**：当代码运行报错时，Agent 应先判断错误类型，再决定处理方式：
+     - **环境类错误**：JDK未安装、Maven未配置、Python版本不兼容、依赖包未安装、端口占用、网络不通等 → **禁止修改接口/参数/签名逻辑**，应提供环境修复命令并引导用户执行
+     - **代码类错误**：语法错误、空指针、类型不匹配、业务逻辑错误等 → 可排查并修正代码
+   - > ⚠️ **环境安装操作需用户确认**：涉及以下操作时，Agent **必须**先展示命令并征得用户同意，不得静默自动执行：
+     - 安装运行时（JDK/Python/Node/Go）
+     - 安装包管理器（Maven/pip/npm）
+     - 安装依赖包（`mvn install`/`pip install`/`npm install`）
+     - 启动/重启服务
+   - > ✅ **提供可执行的环境修复命令**：环境问题应主动给出具体命令，格式如下：
+     ```
+     检测到环境问题：[问题描述]
+     
+     建议执行以下命令修复：
+     ```bash
+     [具体命令]
+     ```
+     
+     是否执行？确认后我将帮您运行。
+     ```
+   - > 🚫 **严禁因环境错误修改 SDK 核心逻辑**：以下内容在环境错误场景下**禁止修改**：
+     - 接口路径（如 `/tradeRt/uniPay`）
+     - 请求参数名（如 `p0_Version`、`hmac`）
+     - 签名算法实现
+     - SDK 工具类的 HTTP 通信/参数组装/签名逻辑
+
 ---
 
 ## 能力概览
@@ -115,24 +141,22 @@ disable: false
 | 7 | `rsa_public_key` | 条件必填 | RSA公钥 | 仅 RSA 模式建议填写，PKCS8 PEM 格式 |
 | 8 | `trade_merchant_no` | ❌ 可选 | 报备商户号 | 服务商模式时填写 |
 
-#### ask_followup_question 调用方式
+#### 信息收集流程（混合模式）
 
-Agent 应构建一次 `ask_followup_question` 调用，将所有必填项放入 questions 数组：
+> ⚠️ **关键约束**：`ask_followup_question` 是**多选题工具**，不支持自由文本输入。因此必须采用「选项参数用工具 + 文本参数用对话」的混合模式：
+
+**第一步：调用 ask_followup_question 收集选项型参数**
+
+Agent 构建一次 `ask_followup_question` 调用，仅放入有明确选项的参数：
 
 ```json
 {
-  "title": "汇聚支付快速接入 - 参数配置",
+  "title": "汇聚支付快速接入 - 基础配置",
   "questions": [
     {
       "id": "sign_type",
       "question": "请选择签名方式：",
       "options": ["MD5（简单快捷）", "RSA（安全性更高）"],
-      "multiSelect": false
-    },
-    {
-      "id": "merchant_no",
-      "question": "请输入您的汇聚支付商户号（在商户后台「账户信息」中查看）：",
-      "options": [],
       "multiSelect": false
     },
     {
@@ -143,27 +167,28 @@ Agent 应构建一次 `ask_followup_question` 调用，将所有必填项放入 
         "生产环境 https://trade.joinpay.com"
       ],
       "multiSelect": false
-    },
-    {
-      "id": "notify_url",
-      "question": "请输入异步回调通知地址（⚠️ 不得使用 localhost/127.0.0.1/内网IP）：",
-      "options": [
-        "格式如 https://your-domain.com/api/pay/notify",
-        "本地开发需用 ngrok/cpolar 等内网穿透工具获取公网地址"
-      ],
-      "multiSelect": false
-    },
-    {
-      "id": "merchant_key",
-      "question": "请输入MD5签名密钥（32位，在商户后台「API设置」中申请）：",
-      "options": [],
-      "multiSelect": false
     }
   ]
 }
 ```
 
-> 若用户选择 RSA 签名方式，最后一个问题替换为 rsa_private_key 和 rsa_public_key 的收集。
+**第二步：通过直接对话逐项收集文本输入型参数**
+
+收到用户的选项回答后，Agent 通过**普通对话消息**逐个询问文本输入参数，每问一个等用户回复后再问下一个：
+
+| 顺序 | 参数ID | 问题文案 | 输入提示 |
+|------|--------|---------|---------|
+| 1 | merchant_no | `请输入您的汇聚支付商户号（在商户后台「账户信息」中查看）：` | 纯数字字符串 |
+| 2 | notify_url | `请输入异步回调通知地址（⚠️ 不得使用 localhost/127.0.0.1/内网IP）：` | 格式如 `https://your-domain.com/api/pay/notify`<br/>本地开发需先用 ngrok/cpolar 获取公网地址 |
+| 3a | merchant_key | `请输入MD5签名密钥（32位，在商户后台「API设置」中申请）：` | 仅MD5模式时询问 |
+| 3b | rsa_private_key | `请输入RSA私钥（PKCS8 PEM格式，含 -----BEGIN/END----- 标记）：` | 仅RSA模式时询问 |
+
+> **交互要求**：
+> - 每次只问**一个问题**，等待用户回复后再问下一个
+> - 用户回复后**立即校验**（见下方校验规则），不合格当场让用户修正
+> - **禁止一次性列出所有问题**，避免用户遗漏或混淆
+>
+> 若用户选择 RSA 签名方式，第 3 步替换为 rsa_private_key 的收集。
 
 #### 参数校验规则
 
@@ -201,9 +226,11 @@ __jp_trade_merchant_no = 报备商户号 (可选)
 |------|----------|----------|
 | Spring Boot | `references/0-快速接入模板/SpringBoot/` | Config + Service + Controller + NotifyController + SDK工具类 |
 
-### 步骤1：扫描项目识别框架
+### 步骤1：扫描项目识别框架 + 环境预检
 
 > 此步骤在步骤0完成后执行。
+
+**1a. 框架识别**
 
 读取项目根目录关键文件识别框架：
 - `pom.xml` 含 `spring-boot-starter-web` → Spring Boot
@@ -212,6 +239,21 @@ __jp_trade_merchant_no = 报备商户号 (可选)
 - `package.json` 含 `express` → Express
 
 若检测到的框架无对应模板，告知用户当前仅支持 Spring Boot，询问是否继续。
+
+**1b. 运行时环境预检**
+
+框架识别后，同步检测目标语言的基础运行环境是否就绪（**仅做检测报告，不执行任何安装操作**）：
+
+| 目标语言 | 检测项 | 未就绪时的标注 |
+|---------|--------|--------------|
+| Java | `JAVA_HOME` 是否设置、`java --version` 可用 | 标注 `⚠️ JDK未安装或JAVA_HOME未配置` |
+| Python | `python3 --version` 可用 | 标注 `⚠️ Python3 未安装` |
+| Node.js | `node --version` 可用 | 标注 `⚠️ Node.js 未安装` |
+
+> **处理规则**：
+> - 环境已就绪 → 正常进入步骤2
+> - 环境未就绪 → **不中断流程**，继续完成代码写入，但在步骤4报告中明确标注 `⚠️ 环境待确认`
+> - **禁止**自动执行安装命令或尝试调用接口验证
 
 ### 步骤2：加载模板并替换占位符
 
@@ -247,22 +289,35 @@ __jp_trade_merchant_no = 报备商户号 (可选)
 框架：Spring Boot 2.x
 签名方式：{MD5|RSA}
 接口环境：{测试|生产}
+代码状态：✅ 已写入（共8个文件）
+环境状态：{✅ 已就绪 | ⚠️ 待确认}
 
-已写入文件（共8个）：
+已写入文件：
   📄 src/main/java/{pkg}/joinpay/sdk/JoinPayClient.java
   📄 src/main/java/{pkg}/joinpay/sdk/JoinPaySignature.java
   📄 src/main/java/{pkg}/joinpay/sdk/JoinPayRsaSignature.java
   📄 src/main/java/{pkg}/joinpay/JoinPayConfig.java
-  📄 src/main/java/{pkg}/joinpay/JoinPayService.java
+  📄 src/main/java/{pk}/joinpay/JoinPayService.java
   📄 src/main/java/{pkg}/joinpay/PayController.java
   📄 src/main/java/{pkg}/joinpay/NotifyController.java
   📄 src/main/resources/application.yml (追加配置)
 
-🔜 下一步：
+{若步骤1b环境检测通过}
+🎉 环境已就绪，可执行以下操作开始测试：
 1. pom.xml 添加 fastjson + commons-codec 依赖
-2. 启动项目，测试 POST /api/pay/create
-3. 用真实设备完成一笔小额支付并验证回调
+2. 执行 mvn clean compile 验证编译
+3. 启动项目，测试 POST /api/pay/create
+4. 用真实设备完成一笔小额支付并验证回调
+
+{若步骤1b环境检测未通过}
+⚠️ 环境待确认 - 代码已就绪但运行时环境未就绪
+请先手动确认以下环境项后，再执行上述测试步骤：
+- [ ] Java: 确认 JAVA_HOME 已设置且 java --version 可用
+- [ ] Maven: 确认 mvn --version 可用
+- [ ] 依赖: 执行 mvn install 安装项目依赖
 ```
+
+> **Agent 权限边界**：Agent 负责代码写入和报告输出。依赖安装、服务启动、接口调用均需用户手动操作或明确授权后由 Agent 辅助执行。
 
 ### 完整流程示意
 
@@ -273,21 +328,25 @@ __jp_trade_merchant_no = 报备商户号 (可选)
   ┌─────────────────────────────────────┐
   │ ① 确认意图，征得用户同意              │
   ├─────────────────────────────────────┤
-  │ ② ⚡ 步骤0：ask_followup_question   │
-  │   一次性收集全部参数（签名方式/商户号/  │
-  │   环境/回调地址/密钥）                │
+  │ ② ⚡ 步骤0：分阶段收集参数            │
+  │   a) ask_followup_question          │
+  │      → 签名方式(MD5/RSA)、接口环境    │
+  │   b) 直接对话逐项提问                │
+  │      → 商户号 → 回调地址 → 密钥      │
+  │      （每问一个，等回复后再问下一个）   │
   ├─────────────────────────────────────┤
   │ ③ 当场校验参数合法性                  │
-  │   （回调地址非localhost/密钥非空等）  │
+  │   （回调地址非localhost/密钥32位等）  │
   ├─────────────────────────────────────┤
-  │ ④ 步骤1：扫描项目 → 识别Spring Boot  │
+  │ ④ 步骤1：扫描项目 → 识别Spring Boot   │
+  │   + 运行时环境预检（JDK/Maven等）     │
   ├─────────────────────────────────────┤
   │ ⑤ 步骤2：加载模板 + 替换占位符        │
   │   （用步骤0缓存的实际参数值）          │
   ├─────────────────────────────────────┤
   │ ⑥ 步骤3：写入8个文件到项目            │
   ├─────────────────────────────────────┤
-  │ ⑦ 步骤4：输出接入报告 + 下一步指引     │
+  │ ⑦ 步骤4：输出接入报告（含环境状态）    │
   └─────────────────────────────────────┘
 ```
 
